@@ -1,0 +1,39 @@
+services:
+  db:
+    # Rahti quirk: avoid the official `postgres` image (it assumes it can chown
+    # its data dir, which fails under Rahti's random non-root UIDs). Use the
+    # same sclorg image locally so the compose -> kompose -> oc workflow ports
+    # over without a rewrite.
+    image: quay.io/sclorg/postgresql-16-c9s
+    restart: unless-stopped
+    environment:
+      POSTGRESQL_USER: tracker
+      POSTGRESQL_PASSWORD: tracker
+      POSTGRESQL_DATABASE: tracker
+    volumes:
+      - db_data:/var/lib/pgsql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tracker", "-d", "tracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: task-tracker-api:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tracker:tracker@db:5432/tracker
+      CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
